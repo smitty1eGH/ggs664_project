@@ -98,3 +98,5 @@ target/
 # Cookiecutter
 output/
 python_boilerplate/
+/Pipfile.lock
+*.sqlite
