@@ -2,7 +2,7 @@ from sqlalchemy                 import create_engine
 from sqlalchemy                 import Column, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
 
-Base=declarative_base()
+Base   =declarative_base()
 
 class District(Base):
     '''Based on TIGER tl_2012_51_vtd10
@@ -23,6 +23,7 @@ class District(Base):
     AWATER10     = Column(String)
     INTPTLAT10   = Column(String)
     INTPTLON10   = Column(String)
+    shape_points = Column(String)
 
 if __name__=='__main__':
     '''Construct the database when invoked directly
