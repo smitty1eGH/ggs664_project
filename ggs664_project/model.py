@@ -25,6 +25,13 @@ class District(Base):
     INTPTLON10   = Column(String)
     shape_points = Column(String)
 
+class DistrictAdjacency(Base):
+    '''Which districts have shape_points that are not disjoint.
+    '''
+    __tablename__     ='districtadjacency'
+    district_left_id  = Column(Integer, primary_key=True)
+    district_right_id = Column(Integer, primary_key=True)
+
 if __name__=='__main__':
     '''Construct the database when invoked directly
     '''

@@ -2,11 +2,11 @@ import shapefile
 from   sqlalchemy     import create_engine
 from   sqlalchemy.orm import sessionmaker
 from   sqlalchemy.sql import text
-from   model          import District
+from   model          import District,DistrictAdjacency
 
 COUNTIES ="/mnt/swap/Virginia_Administrative_Boundary_2017_SHP/VA_COUNTY"
 DISTRICTS="/mnt/swap/tl_2012_51_vtd10/tl_2012_51_vtd10"
-LOAD_DATA=False
+LOAD_DATA=True
 SQL_ADJ  ='''SELECT C.a_district_id, C.a_shape_points, C.b_district_id, C.b_shape_points
              FROM  (SELECT A.district_id as a_district_id, A.shape_points as a_shape_points
                          , B.district_id as b_district_id, B.shape_points as b_shape_points
@@ -29,11 +29,11 @@ def shapelist2set(pointstring):
         ps.add(x)
     return ps
 
-engine=create_engine('sqlite:///ggs664.sqlite', echo=True)
-conn  =engine.connect()
+engine =create_engine('sqlite:///ggs664.sqlite', echo=True)
+conn   =engine.connect()
+session=sessionmaker(bind=engine)() #just instantiate the class already
 
 if LOAD_DATA:
-    session=sessionmaker(bind=engine)() #just instantiate the class already
     for d in shapefile.Reader(DISTRICTS).shapeRecords():
         dd=District(STATEFP10   =d.record[0] ,COUNTYFP10=d.record[1]
                    ,VTDST10     =d.record[2] ,GEOID10   =d.record[3]
@@ -46,15 +46,3 @@ if LOAD_DATA:
                    )
         session.add(dd)
     session.commit()
-
-cur=conn.execute(SQL_ADJ)
-#print(shapelist2set(ASDF))
-try:
-    while cur:
-        x=cur.fetchone()
-        s0=shapelist2set(x[1])
-        s1=shapelist2set(x[3])
-        if not s0.isdisjoint(s1):
-            print('%s %s' % (x[0],x[2]))
-except TypeError:
-    pass
