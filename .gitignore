@@ -100,3 +100,4 @@ output/
 python_boilerplate/
 /Pipfile.lock
 *.sqlite
+*.gz

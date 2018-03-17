@@ -26,11 +26,48 @@ class District(Base):
     shape_points = Column(String)
 
 class DistrictAdjacency(Base):
-    '''Which districts have shape_points that are not disjoint.
+    '''Which districts have shape_points that are NOT disjoint.
     '''
     __tablename__     ='districtadjacency'
     district_left_id  = Column(Integer, primary_key=True)
     district_right_id = Column(Integer, primary_key=True)
+
+class CongDistrictSeed(Base):
+    '''These are districts that are selected manually as them
+         basis for building congressional districts.
+       This lets the calculation start with some initial dispersion,
+         so that we don't wind up choking off the corners.
+    '''
+    __tablename__         ='congdistrictseed'
+    cong_district_seed_id = Column(Integer, primary_key=True)
+    district_id           = Column(Integer)
+
+class OutputDetail(Base):
+    '''Iteratively populated table. For each run, the CongDistricts will
+         grow from their seeds.
+       We will randomly pick a voting distcrict
+         that is adjacent to the merged districts from the OutputDetail,
+         but has not already been taken.
+
+       INSERT INTO outputdetail(run_id, cong_district_seed_id, district_id)
+       VALUES (?,?, (SELECT   district_right_id
+                     FROM     districtadjacency
+                     WHERE    district_left_id IN      (SELECT district_id
+                                                        FROM   outputdetail
+                                                        WHERE  run_id=?
+                                                           AND cong_distcrict_seed_id=?)
+                          AND district_right_id NOT IN (SELECT district_id
+                                                        FROM   outputdetail
+                                                        WERE   run_id=?)
+                     ORDER BY RANDOM()
+                     LIMIT 1));
+    '''
+    __tablename__         ='outputdetail'
+    output_detail_id      = Column(Integer, primary_key=True)
+    run_id                = Column(Integer)
+    cong_district_seed_id = Column(Integer)
+    district_id           = Column(Integer)
+
 
 if __name__=='__main__':
     '''Construct the database when invoked directly

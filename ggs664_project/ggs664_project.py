@@ -6,12 +6,16 @@ from   model          import District,DistrictAdjacency
 
 COUNTIES ="/mnt/swap/Virginia_Administrative_Boundary_2017_SHP/VA_COUNTY"
 DISTRICTS="/mnt/swap/tl_2012_51_vtd10/tl_2012_51_vtd10"
-LOAD_DATA=True
-SQL_ADJ  ='''SELECT C.a_district_id, C.a_shape_points, C.b_district_id, C.b_shape_points
-             FROM  (SELECT A.district_id as a_district_id, A.shape_points as a_shape_points
-                         , B.district_id as b_district_id, B.shape_points as b_shape_points
-                    FROM   districts A, districts B) C
-             WHERE C.a_district_id != C.b_district_id;
+LOAD_DATA=False #True
+SQL_ADJ  ='''SELECT C.a_district_id, C.a_shape_points
+                  , C.b_district_id, C.b_shape_points
+             FROM  (SELECT A.district_id  as a_district_id
+                         , A.shape_points as a_shape_points
+                         , B.district_id  as b_district_id
+                         , B.shape_points as b_shape_points
+                    FROM   districts A
+                         , districts B) C
+             WHERE  C.a_district_id != C.b_district_id;
           '''
 def shapelist2set(pointstring):
     '''POINTSTRING is a CSV list of LON/LAT pairs.
@@ -31,9 +35,17 @@ def shapelist2set(pointstring):
 
 engine =create_engine('sqlite:///ggs664.sqlite', echo=True)
 conn   =engine.connect()
-session=sessionmaker(bind=engine)() #just instantiate the class already
+session=sessionmaker(bind=engine)() #instantiate the class, already
 
-if LOAD_DATA:
+def load_data():
+    '''We ETL data from the shapefile, merging the metadata with the
+         shape_points into a SQLite table.
+       We then query shapefile data with a cartesian join.
+       Take the points of each shapefile entry and make them into a set,
+         so that we can tell if they are disjoint.
+       When NOT disjoint, we deem them neighbors, and store that fact
+         in the district_adjacency table.
+    '''
     for d in shapefile.Reader(DISTRICTS).shapeRecords():
         dd=District(STATEFP10   =d.record[0] ,COUNTYFP10=d.record[1]
                    ,VTDST10     =d.record[2] ,GEOID10   =d.record[3]
@@ -46,3 +58,29 @@ if LOAD_DATA:
                    )
         session.add(dd)
     session.commit()
+
+    batch_size=100
+    cursor=conn.execute(SQL_ADJ)
+    while True:
+        rows=cursor.fetchmany(batch_size)
+        if not rows: break
+        for row in rows:
+            a=shapelist2set(row[1])
+            if not a.isdisjoint(shapelist2set(row[3])):
+                print('%s\t%s' % (row[0],row[2]))
+                da=DistrictAdjacency(district_left_id =row[0]
+                                    ,district_right_id=row[2])
+                session.add(da)
+    session.commit()
+
+    #TODO: nominate 11 seed CongDistricts
+
+def do_runs():
+    '''For each run, start with the 11 districts, there is a 'seed' entry.
+       Load all of the seed entries, and add them to output_detail.
+
+    '''
+
+if __name__=='__main__':
+    if LOAD_DATA: load_data()
+    do_runs()
