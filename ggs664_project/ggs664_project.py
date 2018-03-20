@@ -1,12 +1,19 @@
+import logging
+import logging.config
+import pickle
+
 import shapefile
 from   sqlalchemy     import create_engine
 from   sqlalchemy.orm import sessionmaker
 from   sqlalchemy.sql import text
 from   model          import District,DistrictAdjacency
 
+logging.config.fileConfig('logging.conf',disable_existing_loggers=False)
+logger=logging.getLogger('root')
+
 COUNTIES ="/mnt/swap/Virginia_Administrative_Boundary_2017_SHP/VA_COUNTY"
 DISTRICTS="/mnt/swap/tl_2012_51_vtd10/tl_2012_51_vtd10"
-LOAD_DATA=False #True
+LOAD_DATA=False #True #
 SQL_ADJ  ='''SELECT C.a_district_id, C.a_shape_points
                   , C.b_district_id, C.b_shape_points
              FROM  (SELECT A.district_id  as a_district_id
@@ -17,25 +24,38 @@ SQL_ADJ  ='''SELECT C.a_district_id, C.a_shape_points
                          , districts B) C
              WHERE  C.a_district_id != C.b_district_id;
           '''
-def shapelist2set(pointstring):
-    '''POINTSTRING is a CSV list of LON/LAT pairs.
-    '''
-    #def genpoints(pointstring):
-    #    '''Return a generator to pull the point string values out of the source data.
-    #       First, replace the point commas with pipes and then split on pipe.
-    #       #  Then, drop the parens and split on the internal comma.
-    #       #  Finally, make tuples of floats, if needed.
-    #       #  y=x.replace('(','').replace(')','').split(', ')
-    #       #  print(tuple((float(y[0]),float(y[1]))))
-    #    '''
-    ps=set()
-    for x in pointstring.replace('[','').replace(']','').replace('), ',')|').split('|'):
-        ps.add(x)
-    return ps
-
+SQL_NOM  ='''INSERT INTO congdistrictseed(district_id)
+             SELECT      district_id
+             FROM        districts
+             ORDER BY    random()
+             LIMIT 11;
+          '''
 engine =create_engine('sqlite:///ggs664.sqlite', echo=True)
 conn   =engine.connect()
 session=sessionmaker(bind=engine)() #instantiate the class, already
+
+def shapelist2set(pointstring):
+    '''POINTSTRING is a CSV list of LON/LAT pairs.
+    '''
+    def genpoints(pointstring):
+        '''Return a generator to pull the point string values out of the source data.
+           First, replace the point commas with pipes and then split on pipe.
+             We do this so that we can split the point pairs while preserving
+               the internal comma within the point.
+             Then, drop the parens and split on the internal comma.
+             Finally, make tuples of floats, if needed.
+        '''
+        x=pointstring.replace('[','').replace(']','').replace('), ',')|').split('|')
+        for y in x:
+            z=y.replace('(','').replace(')','').split(', ')
+            yield tuple(( float(z[0])
+                        , float(z[1])
+                       ))
+    ps=set()
+    for x in genpoints(pointstring):
+        ps.add(x)
+    return ps
+
 
 def load_data():
     '''We ETL data from the shapefile, merging the metadata with the
@@ -54,7 +74,7 @@ def load_data():
                    ,MTFCC10     =d.record[8] ,FUNCSTAT10=d.record[9]
                    ,ALAND10     =d.record[10],AWATER10  =d.record[11]
                    ,INTPTLAT10  =d.record[12],INTPTLON10=d.record[13]
-                   ,shape_points=str(d.shape.points)
+                   ,shape_points=shapelist2set(str(d.shape.points))
                    )
         session.add(dd)
     session.commit()
@@ -65,21 +85,23 @@ def load_data():
         rows=cursor.fetchmany(batch_size)
         if not rows: break
         for row in rows:
-            a=shapelist2set(row[1])
-            if not a.isdisjoint(shapelist2set(row[3])):
+            a=pickle.loads(row[1])
+            if not a.isdisjoint(pickle.loads(row[3])):
                 print('%s\t%s' % (row[0],row[2]))
                 da=DistrictAdjacency(district_left_id =row[0]
                                     ,district_right_id=row[2])
                 session.add(da)
     session.commit()
 
-    #TODO: nominate 11 seed CongDistricts
+    #Nominate 11 seed CongDistricts
+    conn.execute(SQL_NOM)
 
 def do_runs():
     '''For each run, start with the 11 districts, there is a 'seed' entry.
        Load all of the seed entries, and add them to output_detail.
 
     '''
+    pass
 
 if __name__=='__main__':
     if LOAD_DATA: load_data()

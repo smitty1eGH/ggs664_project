@@ -9,6 +9,9 @@ name = "pypi"
 
 pyshp = "*"
 sqlalchemy = "*"
+numpy = "*"
+scipy = "*"
+matplotlib = "*"
 
 
 [dev-packages]

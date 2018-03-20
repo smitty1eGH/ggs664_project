@@ -1,5 +1,5 @@
 from sqlalchemy                 import create_engine
-from sqlalchemy                 import Column, Integer, String
+from sqlalchemy                 import Column, Integer, String, DateTime, PickleType
 from sqlalchemy.ext.declarative import declarative_base
 
 Base   =declarative_base()
@@ -23,7 +23,7 @@ class District(Base):
     AWATER10     = Column(String)
     INTPTLAT10   = Column(String)
     INTPTLON10   = Column(String)
-    shape_points = Column(String)
+    shape_points = Column(PickleType)
 
 class DistrictAdjacency(Base):
     '''Which districts have shape_points that are NOT disjoint.
@@ -37,10 +37,23 @@ class CongDistrictSeed(Base):
          basis for building congressional districts.
        This lets the calculation start with some initial dispersion,
          so that we don't wind up choking off the corners.
+    INSERT INTO congdistrictseed(district_id)
+    SELECT      district_id
+    FROM        districts
+    ORDER BY    random()
+    LIMIT 11;
     '''
     __tablename__         ='congdistrictseed'
     cong_district_seed_id = Column(Integer, primary_key=True)
     district_id           = Column(Integer)
+
+class Run(Base):
+    '''We manage the run duration and get a key here.
+    '''
+    __tablename__ = 'run'
+    run_id        = Column(Integer, primary_key=True)
+    run_start     = Column(DateTime)
+    run_stop      = Column(DateTime)
 
 class OutputDetail(Base):
     '''Iteratively populated table. For each run, the CongDistricts will
@@ -49,22 +62,27 @@ class OutputDetail(Base):
          that is adjacent to the merged districts from the OutputDetail,
          but has not already been taken.
 
-       INSERT INTO outputdetail(run_id, cong_district_seed_id, district_id)
-       VALUES (?,?, (SELECT   district_right_id
-                     FROM     districtadjacency
-                     WHERE    district_left_id IN      (SELECT district_id
-                                                        FROM   outputdetail
-                                                        WHERE  run_id=?
-                                                           AND cong_distcrict_seed_id=?)
-                          AND district_right_id NOT IN (SELECT district_id
-                                                        FROM   outputdetail
-                                                        WERE   run_id=?)
-                     ORDER BY RANDOM()
-                     LIMIT 1));
+       INSERT INTO outputdetail( run_id
+                               , step
+                               , cong_district_seed_id
+                               , district_id
+                               )
+       SELECT      ?, ?, ?, district_right_id
+       FROM        districtadjacency
+       WHERE       district_left_id IN      (SELECT district_id
+                                             FROM   outputdetail
+                                             WHERE  run_id                 = ?
+                                                AND cong_distcrict_seed_id = ?)
+               AND district_right_id NOT IN (SELECT district_id
+                                             FROM   outputdetail
+                                             WERE   run_id                 = ?)
+       ORDER BY    RANDOM()
+       LIMIT 1;
     '''
     __tablename__         ='outputdetail'
     output_detail_id      = Column(Integer, primary_key=True)
     run_id                = Column(Integer)
+    step                  = Column(Integer)
     cong_district_seed_id = Column(Integer)
     district_id           = Column(Integer)
 
