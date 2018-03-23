@@ -1,38 +1,23 @@
+from   datetime          import datetime
 import logging
 import logging.config
+logging.config.fileConfig('logging.conf',disable_existing_loggers=False)
+logger=logging.getLogger('root')
+
 import pickle
 
 import shapefile
-from   sqlalchemy     import create_engine
-from   sqlalchemy.orm import sessionmaker
-from   sqlalchemy.sql import text
-from   model          import District,DistrictAdjacency
-
-logging.config.fileConfig('logging.conf',disable_existing_loggers=False)
-logger=logging.getLogger('root')
+from   sqlalchemy        import create_engine
+from   sqlalchemy.orm    import sessionmaker
+from   sqlalchemy.sql    import text
+from   model             import run__init__,District,DistrictAdjacency,Run,OutputDetail
+engine =create_engine('sqlite:///ggs664.sqlite', echo=True)
+conn   =engine.connect()
+session=sessionmaker(bind=engine)() #instantiate the class, already
 
 COUNTIES ="/mnt/swap/Virginia_Administrative_Boundary_2017_SHP/VA_COUNTY"
 DISTRICTS="/mnt/swap/tl_2012_51_vtd10/tl_2012_51_vtd10"
 LOAD_DATA=False #True #
-SQL_ADJ  ='''SELECT C.a_district_id, C.a_shape_points
-                  , C.b_district_id, C.b_shape_points
-             FROM  (SELECT A.district_id  as a_district_id
-                         , A.shape_points as a_shape_points
-                         , B.district_id  as b_district_id
-                         , B.shape_points as b_shape_points
-                    FROM   districts A
-                         , districts B) C
-             WHERE  C.a_district_id != C.b_district_id;
-          '''
-SQL_NOM  ='''INSERT INTO congdistrictseed(district_id)
-             SELECT      district_id
-             FROM        districts
-             ORDER BY    random()
-             LIMIT 11;
-          '''
-engine =create_engine('sqlite:///ggs664.sqlite', echo=True)
-conn   =engine.connect()
-session=sessionmaker(bind=engine)() #instantiate the class, already
 
 def shapelist2set(pointstring):
     '''POINTSTRING is a CSV list of LON/LAT pairs.
@@ -66,6 +51,22 @@ def load_data():
        When NOT disjoint, we deem them neighbors, and store that fact
          in the district_adjacency table.
     '''
+    SQL_ADJ  ='''SELECT C.a_district_id, C.a_shape_points
+                      , C.b_district_id, C.b_shape_points
+                 FROM  (SELECT A.district_id  as a_district_id
+                             , A.shape_points as a_shape_points
+                             , B.district_id  as b_district_id
+                             , B.shape_points as b_shape_points
+                        FROM   districts A
+                             , districts B) C
+                 WHERE  C.a_district_id != C.b_district_id;
+              '''
+    SQL_NOM  ='''INSERT INTO congdistrictseed(district_id)
+                 SELECT      district_id
+                 FROM        districts
+                 ORDER BY    random()
+                 LIMIT 11;
+              '''
     for d in shapefile.Reader(DISTRICTS).shapeRecords():
         dd=District(STATEFP10   =d.record[0] ,COUNTYFP10=d.record[1]
                    ,VTDST10     =d.record[2] ,GEOID10   =d.record[3]
@@ -80,7 +81,7 @@ def load_data():
     session.commit()
 
     batch_size=100
-    cursor=conn.execute(SQL_ADJ)
+    cursor    =conn.execute(SQL_ADJ)
     while True:
         rows=cursor.fetchmany(batch_size)
         if not rows: break
@@ -96,12 +97,35 @@ def load_data():
     #Nominate 11 seed CongDistricts
     conn.execute(SQL_NOM)
 
+
 def do_runs():
     '''For each run, start with the 11 districts, there is a 'seed' entry.
        Load all of the seed entries, and add them to output_detail.
-
+       from   sqlalchemy        import create_engine
+       from   sqlalchemy.orm    import sessionmaker
+       from   sqlalchemy.sql    import text
+       from   model             import District,DistrictAdjacency,Run,OutputDetail
+       engine =create_engine('sqlite:///ggs664.sqlite', echo=True)
+       conn   =engine.connect()
+       session=sessionmaker(bind=engine)() #instantiate the class, already
+       SELECT    district_right_id             as next_adjacency
+       FROM      districtadjacency
+       WHERE     district_left_id
+             IN (SELECT  district_id           as available
+                 FROM    outputdetail
+                 WHERE   run_id                 = ?
+                    AND  cong_district_seed_id  = ?
+                    AND  district_right_id
+                 NOT IN (SELECT district_id    as already_used
+                         FROM   outputdetail
+                         WHERE  run_id          = ?))
+       ORDER BY  RANDOM()
+       LIMIT     1;
     '''
-    pass
+    #TODO: load seeds dictionary.
+    seeds={} #enumeration of the congression_district_seed_ids
+    step =0
+    run  =run__init__(session,step,seeds)
 
 if __name__=='__main__':
     if LOAD_DATA: load_data()
