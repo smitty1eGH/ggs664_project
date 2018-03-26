@@ -2,22 +2,28 @@ from   datetime          import datetime
 import logging
 import logging.config
 logging.config.fileConfig('logging.conf',disable_existing_loggers=False)
+logger=logging.getLogger('sqlalchemy').setLevel(logging.DEBUG)
 logger=logging.getLogger('root')
 
 import pickle
+#import sqlite3
 
 import shapefile
 from   sqlalchemy        import create_engine
 from   sqlalchemy.orm    import sessionmaker
 from   sqlalchemy.sql    import text
 from   model             import run__init__,District,DistrictAdjacency,Run,OutputDetail
-engine =create_engine('sqlite:///ggs664.sqlite', echo=True)
-conn   =engine.connect()
-session=sessionmaker(bind=engine)() #instantiate the class, already
+
+SQLFILE  ='sqlite:///ggs664.sqlite'
+engine   = create_engine(SQLFILE, echo=True)
+session  = sessionmaker(bind=engine)()
+conn     = engine.connect()
+rawconn  = engine.raw_connection()
 
 COUNTIES ="/mnt/swap/Virginia_Administrative_Boundary_2017_SHP/VA_COUNTY"
 DISTRICTS="/mnt/swap/tl_2012_51_vtd10/tl_2012_51_vtd10"
 LOAD_DATA=False #True #
+MAX_SEED =11
 
 def shapelist2set(pointstring):
     '''POINTSTRING is a CSV list of LON/LAT pairs.
@@ -65,8 +71,8 @@ def load_data():
                  SELECT      district_id
                  FROM        districts
                  ORDER BY    random()
-                 LIMIT 11;
-              '''
+                 LIMIT       %s;
+              '''            % MAX_SEED
     for d in shapefile.Reader(DISTRICTS).shapeRecords():
         dd=District(STATEFP10   =d.record[0] ,COUNTYFP10=d.record[1]
                    ,VTDST10     =d.record[2] ,GEOID10   =d.record[3]
@@ -101,31 +107,50 @@ def load_data():
 def do_runs():
     '''For each run, start with the 11 districts, there is a 'seed' entry.
        Load all of the seed entries, and add them to output_detail.
-       from   sqlalchemy        import create_engine
-       from   sqlalchemy.orm    import sessionmaker
-       from   sqlalchemy.sql    import text
-       from   model             import District,DistrictAdjacency,Run,OutputDetail
-       engine =create_engine('sqlite:///ggs664.sqlite', echo=True)
-       conn   =engine.connect()
-       session=sessionmaker(bind=engine)() #instantiate the class, already
-       SELECT    district_right_id             as next_adjacency
-       FROM      districtadjacency
-       WHERE     district_left_id
-             IN (SELECT  district_id           as available
-                 FROM    outputdetail
-                 WHERE   run_id                 = ?
-                    AND  cong_district_seed_id  = ?
-                    AND  district_right_id
-                 NOT IN (SELECT district_id    as already_used
-                         FROM   outputdetail
-                         WHERE  run_id          = ?))
-       ORDER BY  RANDOM()
-       LIMIT     1;
     '''
-    #TODO: load seeds dictionary.
-    seeds={} #enumeration of the congression_district_seed_ids
-    step =0
-    run  =run__init__(session,step,seeds)
+    SQL_NEXT_ADJ='''
+        SELECT    district_right_id               as next_adjacency
+               , (SELECT district_id
+                  FROM   congdistrictseed
+                  WHERE  cong_district_seed_id=%s) as congdistrictseed
+        FROM      districtadjacency
+        WHERE     district_left_id
+              IN (SELECT  district_id             as superdistrict
+                  FROM    outputdetail
+                  WHERE   run_id                          = %s
+                     AND  cong_district_seed_id           =
+                            (SELECT district_id
+                             FROM   congdistrictseed
+                             WHERE  cong_district_seed_id = %s ))
+             AND  district_right_id
+          NOT IN (SELECT  district_id           as already_used
+                  FROM    outputdetail
+                  WHERE   run_id                          = %s)
+        ORDER BY  RANDOM()
+        LIMIT     1;
+    '''
+    SQL_INS_OUTP='''
+        INSERT INTO outputdetail(run_id,step,cong_district_seed_id,district_id)
+        VALUES     (?,?,?,?);
+    '''
+    step=0
+    run =run__init__(conn,session,step)
+    for i in range(MAX_SEED):
+        print('i=%s' % i)
+        cursor=rawconn.cursor()
+        #sql   =SQL_NEXT_ADJ % (i+1,run,i+1,run)
+        sql   =SQL_NEXT_ADJ % (i+1,1,i+1,1)
+        logger.debug(sql)
+        cursor.execute(sql)
+        rows=cursor.fetchone()
+        print(rows)
+       # if not rows: break
+       # #Do expensive merge calculation here
+       # for r in rows:
+       #     conn.execute(SQL_INS_OUTP,run,step,r[1],r[0])
+       #     sess.commit()
+       # step+=1
+
 
 if __name__=='__main__':
     if LOAD_DATA: load_data()

@@ -7,17 +7,19 @@ from sqlalchemy.ext.declarative import declarative_base
 
 Base=declarative_base()
 
-def run__init__(session :Any, step :int, seeds :Dict)->int:
+def run__init__(conn :Any, session :Any, step :int)->int:
     '''Make a new run, entry, seed the outputdetail tablename
          with a zero entry so that the 'used' query doesn't
          return a null.
        Use SEEDS to make sure that the cong_district_seed_id is meaningful.
     '''
-    #RAII
+    SQL_NEW_RUN='''
+       insert into outputdetail(run_id,step,cong_district_seed_id,district_id)
+       select      ?, ?, district_id, 0
+       from        congdistrictseed;
+    '''
     r=Run(run_start=datetime.now()); session.add(r); session.commit()
-    for i in range(11):
-        od=OutputDetail(run_id=r.run_id,step=step,cong_district_seed_id=seeds[i],district_id=0)
-        session.add(od)
+    conn.execute(SQL_NEW_RUN,(r.run_id,step))
     session.commit()
     return r.run_id
 
