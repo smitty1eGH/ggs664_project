@@ -8,33 +8,44 @@ ggs664_project
 
 * Project Proposal
 
-1. General research question.
+-1. General research question.
+
    Can we automate aggregation of congressional voting districts (CVDs) into the final congressional districts,
 so that congressional districts meet some definition of uniformity?
 
-2. Dataset
+-2. Dataset
+
    Virgnia 2010 districts:
+
      https://www2.census.gov/geo/tiger/TIGER2012/VTD/tl_2012_51_vtd10.zip
 
 
-1. Research pipeline
+-3. Research pipeline
+
    a. data storage
+
       https://github.com/smitty1eGH/ggs664_project
 
    b. indexing methods
+
       Standard RDBMS methods. Vertex lists for districts turned into lists of float tuples, which are then directly
         stored in the CVD table in pickled form.
 
    c. database
+
       SQLite3, wrapped in Python and SQLAlchemy ORM
 
    d. preprocessing
+
       Convert shapefile into fully relational table.
+
       Each list of points for the CVD shape is handled as a Python set, where the is_disjoint() function makes deriving
         an adjacency table relatively simple.
 
    e. algorithm
+
       We then take 11 'seed' districts and grow them by the uniformity definition to derive a final set of districts.
 
    f. visualization
+
       A final map of Virginia with both the current and the calculated Congressional Districts
