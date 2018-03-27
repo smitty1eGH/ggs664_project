@@ -101,3 +101,4 @@ python_boilerplate/
 /Pipfile.lock
 *.sqlite
 *.gz
+*-journal

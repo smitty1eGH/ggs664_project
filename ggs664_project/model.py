@@ -9,13 +9,13 @@ Base=declarative_base()
 
 def run__init__(conn :Any, session :Any, step :int)->int:
     '''Make a new run, entry, seed the outputdetail tablename
-         with a zero entry so that the 'used' query doesn't
+         with a self-referential entry so that the 'used' query doesn't
          return a null.
        Use SEEDS to make sure that the cong_district_seed_id is meaningful.
     '''
     SQL_NEW_RUN='''
        insert into outputdetail(run_id,step,cong_district_seed_id,district_id)
-       select      ?, ?, district_id, 0
+       select      ?, ?, district_id, district_id
        from        congdistrictseed;
     '''
     r=Run(run_start=datetime.now()); session.add(r); session.commit()

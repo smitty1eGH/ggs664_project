@@ -67,12 +67,6 @@ def load_data():
                              , districts B) C
                  WHERE  C.a_district_id != C.b_district_id;
               '''
-    SQL_NOM  ='''INSERT INTO congdistrictseed(district_id)
-                 SELECT      district_id
-                 FROM        districts
-                 ORDER BY    random()
-                 LIMIT       %s;
-              '''            % MAX_SEED
     for d in shapefile.Reader(DISTRICTS).shapeRecords():
         dd=District(STATEFP10   =d.record[0] ,COUNTYFP10=d.record[1]
                    ,VTDST10     =d.record[2] ,GEOID10   =d.record[3]
@@ -100,14 +94,18 @@ def load_data():
                 session.add(da)
     session.commit()
 
-    #Nominate 11 seed CongDistricts
-    conn.execute(SQL_NOM)
 
 
-def do_runs():
+def do_runs(runs :int):
     '''For each run, start with the 11 districts, there is a 'seed' entry.
        Load all of the seed entries, and add them to output_detail.
     '''
+    SQL_NOM  ='''INSERT INTO congdistrictseed(district_id)
+                 SELECT      district_id
+                 FROM        districts
+                 ORDER BY    random()
+                 LIMIT       %s;
+              '''            % MAX_SEED
     SQL_NEXT_ADJ='''
         SELECT    district_right_id               as next_adjacency
                , (SELECT district_id
@@ -133,25 +131,38 @@ def do_runs():
         INSERT INTO outputdetail(run_id,step,cong_district_seed_id,district_id)
         VALUES     (?,?,?,?);
     '''
-    step=0
-    run =run__init__(conn,session,step)
-    for i in range(MAX_SEED):
-        print('i=%s' % i)
-        cursor=rawconn.cursor()
-        #sql   =SQL_NEXT_ADJ % (i+1,run,i+1,run)
-        sql   =SQL_NEXT_ADJ % (i+1,1,i+1,1)
-        logger.debug(sql)
-        cursor.execute(sql)
-        rows=cursor.fetchone()
-        print(rows)
-       # if not rows: break
-       # #Do expensive merge calculation here
-       # for r in rows:
-       #     conn.execute(SQL_INS_OUTP,run,step,r[1],r[0])
-       #     sess.commit()
-       # step+=1
+    conn.execute(text("DELETE FROM outputdetail;"))
+    session.commit()
+
+    for r in range(runs):
+        #Nominate 11 seed CongDistricts
+        conn.execute(text("DELETE FROM congdistrictseed;"))
+        session.commit()
+        conn.execute(SQL_NOM)
+        session.commit()
+
+        step  =0
+        run   =run__init__(conn,session,step)
+        contin=True
+        while contin:
+            for i in range(MAX_SEED):
+
+                cursor=rawconn.cursor()
+                sql   =SQL_NEXT_ADJ % (i+1,run,i+1,run)
+                cursor.execute(sql)
+                rows  =cursor.fetchone()
+
+                #logger.debug('i=%s',i)
+                #logger.debug(rows)
+                if not rows:
+                    contin=False
+                    break
+
+                conn.execute(SQL_INS_OUTP,run,step,rows[1],rows[0])
+                session.commit()
+            step+=1
 
 
 if __name__=='__main__':
     if LOAD_DATA: load_data()
-    do_runs()
+    do_runs(100)
