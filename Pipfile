@@ -12,6 +12,7 @@ sqlalchemy = "*"
 numpy = "*"
 scipy = "*"
 matplotlib = "*"
+eralchemy = "*"
 
 
 [dev-packages]
